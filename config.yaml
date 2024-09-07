@@ -1,0 +1,9 @@
+working_directory: "./src"
+
+go_program: "main.go"
+go_args: ["/home/adsv/Github/tensorflow", "python"]
+
+check_file: "data.json"
+
+python_program: "dependency_analyzer.py"
+python_args: ["--create_network_view", "--limit 100"]
