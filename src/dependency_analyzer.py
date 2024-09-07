@@ -96,13 +96,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--no_cache", action='store_true',
-                        help="force the usage of no cached values")
+                        help="forces the usage of no-cached values")
     
     parser.add_argument("--create_csv", action='store_true',
-                        help="create a csv file to use as a dependency matrix")
+                        help="create a CSV file to use as a dependency matrix")
 
     parser.add_argument("--create_network_view", action='store_true', 
-                        help="include to create a interactive network view of the dependencies")
+                        help="include to create an interactive network view of the dependencies")
     parser.add_argument("--dynamic_node_size", action='store_true', 
                         help='include to enable the usage of dynamic node sizes in the network view')
     parser.add_argument("--dynamic_edge_size", action='store_true',
