@@ -1,6 +1,6 @@
 # project specific files
 
-da_network_view.*
+*da_*
 data.*
 
 # From https://github.com/github/gitignore/blob/main/Go.gitignore
