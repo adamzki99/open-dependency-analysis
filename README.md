@@ -47,7 +47,7 @@ Run the program with the included bash script.
 
 - **go_args**
   - First argument: Path to the directory to analyze
-  - Second argument: Programming language. Currently, only "python" is available.
+  - Second argument: Programming language. Currently, only "python" and "plsql" is available.
 - **python_args**
 ```
 usage: dependency_analyzer.py [-h] [--no_cache] [--create_csv] [--create_network_view] [--dynamic_node_size] [--dynamic_edge_size]
