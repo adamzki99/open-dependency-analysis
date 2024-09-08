@@ -17,7 +17,7 @@ const (
 	pythonRegex       = `\b\w+\s*\.\s*\w+\s*\(`
 	pythonFileExt     = ".py"
 	plsqlRegex        = `\b([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\(`
-	plsqlFileExt      = ".pkg"
+	plsqlFileExt      = ".pkb"
 )
 
 // File represents the structure of a file with relevant metadata.
