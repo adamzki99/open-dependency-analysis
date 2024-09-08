@@ -13,13 +13,15 @@ import (
 	"sync"
 )
 
-const pythonRegex = `\b\w+\s*\.\s*\w+\s*\(`
-const pythonFileExtension = ".py"
+const (
+	pythonRegex       = `\b\w+\s*\.\s*\w+\s*\(`
+	pythonFileExt     = ".py"
+	plsqlRegex        = `\b([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\(`
+	plsqlFileExt      = ".pkg"
+)
 
-const plsqlRegex = `\b([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\(`
-const plsqlFileExtension = ".pkg"
-
-type file struct {
+// File represents the structure of a file with relevant metadata.
+type File struct {
 	PackageName   string         `json:"PackageName"`
 	NumberOfLines int            `json:"NumberOfLines"`
 	DirectoryName string         `json:"DirectoryName"`
@@ -31,33 +33,26 @@ func getFilename(path string) string {
 	return filepath.Base(path)
 }
 
-// getDirectory takes a file path and returns the directory the file is in.
+// getDirectory extracts the directory name from a given file path.
 func getDirectory(filePath string) string {
-
 	directories := strings.Split(filepath.Dir(filePath), "/")
-
 	return directories[len(directories)-1]
 }
 
-// countLines takes a path to a file and returns the number of lines in the file.
-func countLines(path string) (int, error) {
-	// Open the file
-	file, err := os.Open(path)
+// countLines reads and counts the number of lines in a file.
+func countLines(filePath string) (int, error) {
+	file, err := os.Open(filePath)
 	if err != nil {
 		return 0, fmt.Errorf("error opening file: %w", err)
 	}
 	defer file.Close()
 
-	// Create a scanner to read the file line by line
 	scanner := bufio.NewScanner(file)
-
-	// Count the lines
 	lineCount := 0
 	for scanner.Scan() {
 		lineCount++
 	}
 
-	// Check for errors during scanning
 	if err := scanner.Err(); err != nil {
 		return 0, fmt.Errorf("error reading file: %w", err)
 	}
@@ -65,86 +60,82 @@ func countLines(path string) (int, error) {
 	return lineCount, nil
 }
 
-func fileReader(id int, regex *regexp.Regexp, paths *[]string, files *[]file, mu *sync.Mutex, wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	var localFiles []file
-
-	for _, path := range *paths {
-
-		var localFile file
-
-		var references []string
-
-		fileName := getFilename(path)
-		packageName := strings.Split(fileName, ".")[0]
-
-		content, err := os.ReadFile(path)
-		if err != nil {
-			fmt.Printf("Worker %d into error %s\n", id, err)
-			return
-		}
-
-		for _, foundMatch := range regex.FindAllString(string(content), -1) {
-			references = append(references, strings.Split(foundMatch, ".")[0])
-		}
-
-		localFile.References = summarizeOccurrences(&references)
-		localFile.PackageName = packageName
-		localFile.DirectoryName = getDirectory(path)
-
-		localFile.NumberOfLines, err = countLines(path)
-		if err != nil {
-			fmt.Printf("Worker %d into error %s\n", id, err)
-			return
-		}
-
-		localFiles = append(localFiles, localFile)
-	}
-
-	mu.Lock()
-	(*files) = append((*files), localFiles...)
-	mu.Unlock()
-}
-
-// summarizeOccurrences takes a slice of strings and returns a map where
-// the keys are the unique strings from the slice and the values are the
-// number of occurrences of each string.
-func summarizeOccurrences(strings *[]string) map[string]int {
-	// Create a map to store the occurrences
+// summarizeOccurrences summarizes the occurrences of strings and returns a map.
+func summarizeOccurrences(references *[]string) map[string]int {
 	occurrences := make(map[string]int)
-
-	// Iterate over the slice and count occurrences
-	for _, str := range *strings {
-		occurrences[str]++
+	for _, ref := range *references {
+		occurrences[ref]++
 	}
-
 	return occurrences
 }
 
-// writeJSONFile takes a filename and an array of the file struct,
-// serializes it to JSON, and writes the JSON data to the specified file.
-func writeJSONFile(filename string, data *[]file) error {
-	// Serialize the array of structs to JSON with indentation
-	jsonData, err := json.MarshalIndent(&data, "", "  ")
+// processFile reads, extracts references, counts lines, and compiles metadata for each file.
+func processFile(path string, regex *regexp.Regexp) (*File, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("error reading file %s: %w", path, err)
+	}
+
+	fileName := getFilename(path)
+	packageName := strings.Split(fileName, ".")[0]
+
+	var references []string
+	for _, match := range regex.FindAllString(string(content), -1) {
+		references = append(references, strings.Split(match, ".")[0])
+	}
+
+	numLines, err := countLines(path)
+	if err != nil {
+		return nil, fmt.Errorf("error counting lines in file %s: %w", path, err)
+	}
+
+	return &File{
+		PackageName:   packageName,
+		DirectoryName: getDirectory(path),
+		NumberOfLines: numLines,
+		References:    summarizeOccurrences(&references),
+	}, nil
+}
+
+// fileReader processes a batch of files in a worker goroutine.
+func fileReader(id int, regex *regexp.Regexp, paths []string, results chan<- *File, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for _, path := range paths {
+		fileData, err := processFile(path, regex)
+		if err != nil {
+			fmt.Printf("Worker %d encountered error: %s\n", id, err)
+			continue
+		}
+		results <- fileData
+	}
+}
+
+// collectPaths collects file paths from a directory that match the specified extension.
+func collectPaths(directory, extension string) ([]string, error) {
+	var paths []string
+	err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && filepath.Ext(path) == extension {
+			paths = append(paths, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error walking through directory: %w", err)
+	}
+	return paths, nil
+}
+
+// writeJSONFile serializes data to JSON and writes it to a file.
+func writeJSONFile(filename string, data []File) error {
+	jsonData, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return fmt.Errorf("error serializing data to JSON: %w", err)
 	}
 
-	// Create or open the file
-	file, err := os.Create(filename)
-	if err != nil {
-		return fmt.Errorf("error creating file: %w", err)
-	}
-	defer file.Close()
-
-	// Write JSON data to the file
-	_, err = file.Write(jsonData)
-	if err != nil {
-		return fmt.Errorf("error writing to file: %w", err)
-	}
-
-	return nil
+	return os.WriteFile(filename, jsonData, 0644)
 }
 
 func main() {
@@ -152,64 +143,65 @@ func main() {
 		log.Fatal("Usage: go run main.go <directory> <python | plsql>")
 	}
 
-	var paths []string
-
-	var pattern string
-	var fileExtension string
-
 	directory := os.Args[1]
+	language := os.Args[2]
 
-	if os.Args[2] == "python" {
+	var pattern, fileExtension string
+	switch language {
+	case "python":
 		pattern = pythonRegex
-		fileExtension = pythonFileExtension
-	} else if os.Args[2] == "plsql" {
+		fileExtension = pythonFileExt
+	case "plsql":
 		pattern = plsqlRegex
-		fileExtension = plsqlFileExtension
-	} else {
-		log.Fatal("Unsupported programming language selected")
+		fileExtension = plsqlFileExt
+	default:
+		log.Fatal("Unsupported language selected")
 	}
-
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	var files []file
-
-	runtime.GOMAXPROCS(runtime.NumCPU())
-	numWorkers := runtime.NumCPU()
 
 	// Compile the regular expression.
 	regex, err := regexp.Compile(pattern)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(fmt.Errorf("error compiling regex: %w", err))
 	}
 
-	// Walk through the directory and its subdirectories.
-	err = filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// If it's a file, process it.
-		if !info.IsDir() && filepath.Ext(path) == fileExtension {
-			paths = append(paths, path)
-		}
-		return nil
-	})
+	// Collect file paths based on the selected language.
+	paths, err := collectPaths(directory, fileExtension)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Start worker goroutines
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	numWorkers := runtime.NumCPU()
+
+	// Set up goroutines to process files concurrently.
+	var wg sync.WaitGroup
+	results := make(chan *File, len(paths))
+	batchSize := len(paths) / numWorkers
+
+	// Start worker goroutines.
 	for i := 1; i <= numWorkers; i++ {
 		wg.Add(1)
-		go fileReader(i, regex, &paths, &files, &mu, &wg)
+		start := (i - 1) * batchSize
+		end := start + batchSize
+		if i == numWorkers {
+			end = len(paths)
+		}
+		go fileReader(i, regex, paths[start:end], results, &wg)
 	}
 
-	// Wait for all workers to finish
-	wg.Wait()
+	// Collect results from workers.
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
 
-	err = writeJSONFile("data.json", &files)
-	if err != nil {
+	var files []File
+	for fileData := range results {
+		files = append(files, *fileData)
+	}
+
+	// Write data to JSON file.
+	if err := writeJSONFile("data.json", files); err != nil {
 		log.Fatal(err)
 	}
-
 }
