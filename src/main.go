@@ -16,6 +16,9 @@ import (
 const pythonRegex = `\b\w+\s*\.\s*\w+\s*\(`
 const pythonFileExtension = ".py"
 
+const plsqlRegex = `\b([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\(`
+const plsqlFileExtension = ".pkg"
+
 type file struct {
 	PackageName   string         `json:"PackageName"`
 	NumberOfLines int            `json:"NumberOfLines"`
@@ -146,7 +149,7 @@ func writeJSONFile(filename string, data *[]file) error {
 
 func main() {
 	if len(os.Args) < 3 {
-		log.Fatal("Usage: go run main.go <directory> <python>")
+		log.Fatal("Usage: go run main.go <directory> <python | plsql>")
 	}
 
 	var paths []string
@@ -159,6 +162,9 @@ func main() {
 	if os.Args[2] == "python" {
 		pattern = pythonRegex
 		fileExtension = pythonFileExtension
+	} else if os.Args[2] == "plsql" {
+		pattern = plsqlRegex
+		fileExtension = plsqlFileExtension
 	} else {
 		log.Fatal("Unsupported programming language selected")
 	}
