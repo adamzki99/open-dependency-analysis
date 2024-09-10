@@ -36,7 +36,7 @@ def json_to_dataframe(json_data: list) -> pd.DataFrame:
     Returns:
         pd.DataFrame: A pandas DataFrame created from the list.
     """
-    data_dict = {item['PackageName']: item['References'] for item in json_data}
+    data_dict = {item['Package']: item['CalledBy'] for item in json_data}
     return pd.DataFrame.from_dict(data_dict)
 
 

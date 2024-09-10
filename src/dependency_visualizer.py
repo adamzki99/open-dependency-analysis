@@ -60,7 +60,7 @@ def update_node_size(nodes, dynamic_node_size):
 
         pbar.close()
     else:
-        pbar = tqdm(total=len(nodes)*2)
+        pbar = tqdm(total=len(nodes))
         
         for node in nodes:
             pbar.update(1)        
@@ -144,12 +144,12 @@ def create_fully_connected_graph(json_data, weight_threshold):
     pbar = tqdm(total=len(json_data))
     for _, entry in enumerate(json_data):
         pbar.update(1)
-        for edge_weight, node_b in enumerate(entry['References']):                
+        for edge_weight, node_b in enumerate(entry['CalledBy']):                
 
             # Include only edges with weight above the threshold
             if edge_weight >= weight_threshold:
-                edges.append(Edge(entry['PackageName'], node_b, edge_weight))
-                connected_nodes.update([entry['PackageName'], node_b])
+                edges.append(Edge(entry['Package'], node_b, edge_weight))
+                connected_nodes.update([entry['Package'], node_b])
     
     pbar.close()
 
@@ -161,9 +161,9 @@ def create_fully_connected_graph(json_data, weight_threshold):
     pbar = tqdm(total=len(json_data))
     for entry in json_data:
         pbar.update(1)
-        if entry['PackageName'] in connected_nodes:
+        if entry['Package'] in connected_nodes:
 
-            nodes.append(Node(entry['PackageName'], entry['PackageName'], string_to_color(entry['DirectoryName']), entry['NumberOfLines']))
+            nodes.append(Node(entry['Package'], entry['Package'], string_to_color(entry['DirectoryName']), entry['NumberOfLines']))
     pbar.close()
 
     return nodes, edges
